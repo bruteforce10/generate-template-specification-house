@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Player } from "@remotion/player";
 import {
   Bed,
@@ -45,7 +45,7 @@ const VideoGenerator = () => {
     fadeOut: 1,
   });
 
-  const calculateTotalDuration = () => {
+  const calculateTotalDuration = useCallback(() => {
     if (animationMode === "bersamaan") {
       return (
         animationSettings.fadeIn +
@@ -59,7 +59,7 @@ const VideoGenerator = () => {
         totalFadeIn + animationSettings.display + animationSettings.fadeOut
       );
     }
-  };
+  }, [animationMode, animationSettings, specs.length]);
 
   const [durationInFrames, setDurationInFrames] = useState(
     calculateTotalDuration() * 30
@@ -67,7 +67,7 @@ const VideoGenerator = () => {
 
   useEffect(() => {
     setDurationInFrames(Math.ceil(calculateTotalDuration() * 30));
-  }, [animationSettings, specs, animationMode]);
+  }, [animationSettings, specs, animationMode, calculateTotalDuration]);
 
   const addSpec = () => {
     if (specs.length >= 4) {
@@ -112,44 +112,451 @@ const VideoGenerator = () => {
     setIsExporting(true);
 
     try {
-      // Prepare video configuration
-      const videoConfig = {
-        specs,
-        backgroundType,
-        backgroundColor,
-        backgroundVideoUrl: backgroundVideo
-          ? await fileToBase64(backgroundVideo)
-          : null,
-        spacing,
-        animationSettings,
-        animationMode,
-        animationType,
-        duration: calculateTotalDuration(),
-        resolution: {
-          width: 1080,
-          height: 1920,
-        },
-      };
-
       toast.info(
         "Memulai export video... Ini mungkin memakan waktu beberapa menit."
       );
 
-      toast.success("Video berhasil di-export!");
+      // Use browser-based export using canvas recording
+      await exportVideoBrowser();
     } catch (error) {
       console.error("Export error:", error);
-      toast.error("Gagal export video. Silakan coba lagi.");
-    } finally {
+      toast.error(`Gagal export video: ${error.message}`);
       setIsExporting(false);
     }
   };
 
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
+  const exportVideoBrowser = async () => {
+    // Create a canvas for rendering
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext("2d");
+
+    // Calculate sizing based on number of specs (same as PropertyVideo)
+    const numSpecs = specs.length;
+    let iconSize, titleSize, subtitleSize, itemGap;
+    switch (numSpecs) {
+      case 1:
+        iconSize = 160;
+        titleSize = 140;
+        subtitleSize = 70;
+        itemGap = 50;
+        break;
+      case 2:
+        iconSize = 140;
+        titleSize = 120;
+        subtitleSize = 60;
+        itemGap = 45;
+        break;
+      case 3:
+        iconSize = 100;
+        titleSize = 90;
+        subtitleSize = 45;
+        itemGap = 35;
+        break;
+      case 4:
+        iconSize = 80;
+        titleSize = 70;
+        subtitleSize = 35;
+        itemGap = 25;
+        break;
+      default:
+        iconSize = 100;
+        titleSize = 90;
+        subtitleSize = 45;
+        itemGap = 35;
+    }
+
+    const itemWidth = iconSize * 1.5;
+    const totalWidth = itemWidth * numSpecs + spacing * (numSpecs - 1);
+    let scale = 1;
+    const maxWidth = 1000;
+    if (totalWidth > maxWidth) {
+      scale = maxWidth / totalWidth;
+    }
+
+    // Pre-render icons to images
+    const renderIconToImage = async (spec, iconSize) => {
+      const IconComponent = getIconComponent(spec.icon);
+      const svgString = React.createElement(IconComponent, {
+        size: iconSize,
+        strokeWidth: 2,
+        color: "white",
+      });
+
+      // Create a temporary SVG element
+      const tempDiv = document.createElement("div");
+      tempDiv.style.position = "absolute";
+      tempDiv.style.left = "-9999px";
+      tempDiv.style.width = `${iconSize}px`;
+      tempDiv.style.height = `${iconSize}px`;
+      document.body.appendChild(tempDiv);
+
+      // Render React component to DOM
+      const { createRoot } = await import("react-dom/client");
+      const root = createRoot(tempDiv);
+      root.render(
+        React.createElement("div", { style: { color: "white" } }, svgString)
+      );
+
+      // Wait for render
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Convert to image
+      const svgElement = tempDiv.querySelector("svg");
+      if (!svgElement) {
+        document.body.removeChild(tempDiv);
+        root.unmount();
+        return null;
+      }
+
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const svgBlob = new Blob([svgData], {
+        type: "image/svg+xml;charset=utf-8",
+      });
+      const url = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          document.body.removeChild(tempDiv);
+          root.unmount();
+          resolve();
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      return img;
+    };
+
+    toast.info("Mempersiapkan icon...");
+    const iconImages = await Promise.all(
+      specs.map((spec) => renderIconToImage(spec, iconSize))
+    );
+
+    // Create MediaRecorder for video export
+    const stream = canvas.captureStream(30); // 30 fps
+    const mediaRecorder = new MediaRecorder(stream, {
+      mimeType: "video/webm;codecs=vp9",
+      videoBitsPerSecond: 5000000,
+    });
+
+    const chunks = [];
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    return new Promise((resolve) => {
+      mediaRecorder.onstop = async () => {
+        try {
+          const webmBlob = new Blob(chunks, { type: "video/webm" });
+
+          // Convert WebM to MP4 using ffmpeg.wasm
+          toast.info("Mengkonversi ke MP4...");
+
+          const { createFFmpeg, fetchFile } = await import("@ffmpeg/ffmpeg");
+
+          const ffmpeg = createFFmpeg({
+            log: true,
+            corePath:
+              "https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js",
+          });
+          await ffmpeg.load();
+
+          ffmpeg.FS("writeFile", "input.webm", await fetchFile(webmBlob));
+          await ffmpeg.run(
+            "-i",
+            "input.webm",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "faststart",
+            "output.mp4"
+          );
+
+          const data = ffmpeg.FS("readFile", "output.mp4");
+          const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
+
+          // Download the MP4 file
+          const url = window.URL.createObjectURL(mp4Blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `property-video-${Date.now()}.mp4`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+
+          toast.success("Video berhasil di-export!");
+          setIsExporting(false);
+          resolve();
+        } catch (error) {
+          console.error("Conversion error:", error);
+          // Fallback: download as WebM
+          const webmBlob = new Blob(chunks, { type: "video/webm" });
+          const url = window.URL.createObjectURL(webmBlob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `property-video-${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+
+          toast.success(
+            "Video berhasil di-export! (Format: WebM - konversi ke MP4 gagal)"
+          );
+          setIsExporting(false);
+          resolve();
+        }
+      };
+
+      // Start recording
+      mediaRecorder.start();
+
+      // Render frames to canvas
+      const totalFrames = durationInFrames;
+      const fps = 30;
+      const frameDelay = 1000 / fps;
+
+      // Render each frame
+      const renderFrame = async (frame) => {
+        // Draw background
+        if (backgroundType === "color") {
+          ctx.fillStyle = backgroundColor;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (backgroundType === "video" && backgroundVideoUrl) {
+          // Draw video background (simplified - just draw color for now)
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Calculate current time
+        const currentTime = frame / fps;
+        const { fadeIn, display, fadeOut } = animationSettings;
+
+        const scaledTotalWidth = totalWidth * scale;
+        const startX = (canvas.width - scaledTotalWidth) / 2;
+        const centerY = canvas.height / 2;
+
+        for (let i = 0; i < specs.length; i++) {
+          let opacity = 1;
+          let offsetX = 0;
+          let offsetY = 0;
+          let scaleAnim = 1;
+
+          // Calculate animation progress
+          let progress = 0;
+          if (animationMode === "bersamaan") {
+            const totalDuration = fadeIn + display + fadeOut;
+            if (currentTime < fadeIn) {
+              progress = currentTime / fadeIn;
+            } else if (currentTime < fadeIn + display) {
+              progress = 1;
+            } else if (currentTime < totalDuration) {
+              progress = 1 - (currentTime - fadeIn - display) / fadeOut;
+            } else {
+              progress = 0;
+            }
+          } else {
+            const startTime = i * fadeIn;
+            const allAppearedTime = specs.length * fadeIn;
+            const fadeOutStartTime = allAppearedTime + display;
+            const totalDuration = fadeOutStartTime + fadeOut;
+
+            if (currentTime < startTime) {
+              progress = 0;
+            } else if (currentTime < startTime + fadeIn) {
+              progress = (currentTime - startTime) / fadeIn;
+            } else if (currentTime < fadeOutStartTime) {
+              progress = 1;
+            } else if (currentTime < totalDuration) {
+              progress = 1 - (currentTime - fadeOutStartTime) / fadeOut;
+            } else {
+              progress = 0;
+            }
+          }
+
+          // Apply animation type
+          switch (animationType) {
+            case "fade":
+              opacity = progress;
+              break;
+            case "slideUp":
+              opacity = progress;
+              offsetY = (1 - progress) * 100;
+              break;
+            case "slideDown":
+              opacity = progress;
+              offsetY = (progress - 1) * 100;
+              break;
+            case "slideLeft":
+              opacity = progress;
+              offsetX = (progress - 1) * 100;
+              break;
+            case "slideRight":
+              opacity = progress;
+              offsetX = (1 - progress) * 100;
+              break;
+            case "scale":
+              opacity = progress;
+              scaleAnim = progress;
+              break;
+            default:
+              opacity = progress;
+          }
+
+          const x =
+            startX +
+            i * (itemWidth * scale + spacing * scale) +
+            (itemWidth * scale) / 2 +
+            offsetX;
+          const y = centerY + offsetY;
+
+          ctx.save();
+          ctx.globalAlpha = opacity;
+          ctx.translate(x, y);
+          ctx.scale(scaleAnim, scaleAnim);
+
+          // First, calculate subtitle height dynamically (before calculating positions)
+          // This ensures spacing is correct for both single and multi-line subtitles
+          const subtitleText = specs[i].subtitle;
+          const maxSubtitleWidth = itemWidth * scale;
+
+          ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
+          const metrics = ctx.measureText(subtitleText);
+
+          let subtitleHeight = subtitleSize; // Default for single line
+          let subtitleLines = [subtitleText];
+
+          if (metrics.width > maxSubtitleWidth) {
+            // Multi-line: calculate actual height
+            const words = subtitleText.split(" ");
+            const lines = [];
+            let currentLine = "";
+
+            for (let n = 0; n < words.length; n++) {
+              const testLine =
+                currentLine + (currentLine ? " " : "") + words[n];
+              const testMetrics = ctx.measureText(testLine);
+
+              if (testMetrics.width > maxSubtitleWidth && currentLine) {
+                lines.push(currentLine);
+                currentLine = words[n];
+              } else {
+                currentLine = testLine;
+              }
+            }
+            if (currentLine) {
+              lines.push(currentLine);
+            }
+
+            subtitleLines = lines;
+            // Multi-line height: first line (subtitleSize) + subsequent lines (lineHeight * 1.2)
+            const lineHeight = subtitleSize * 1.2;
+            subtitleHeight = subtitleSize + (lines.length - 1) * lineHeight;
+          }
+
+          // Now calculate positions based on dynamic subtitle height
+          // PropertyVideo structure:
+          // - Container: flexDirection: column, alignItems: center, gap: itemGap
+          // - Icon div (height: iconSize)
+          // - Gap: itemGap
+          // - Title (height: titleSize, lineHeight: 1)
+          // - marginBottom: itemGap * 0.3
+          // - Subtitle (height: subtitleHeight - dynamic based on lines)
+          //
+          // Total height: iconSize + itemGap + titleSize + (itemGap * 0.3) + subtitleHeight
+          const totalHeight =
+            iconSize + itemGap + titleSize + itemGap * 0.3 + subtitleHeight;
+          const topY = -totalHeight / 2;
+
+          // Icon: top element, center Y position
+          const iconY = topY + iconSize / 2;
+
+          // Title: after icon + gap, center Y position
+          const titleY = topY + iconSize + itemGap + titleSize / 2;
+
+          // Subtitle: after title + marginBottom, center Y position (using dynamic height)
+          const subtitleY =
+            topY +
+            iconSize +
+            itemGap +
+            titleSize +
+            itemGap * 0.3 +
+            subtitleHeight / 2;
+
+          // Draw icon (centered horizontally and vertically)
+          if (iconImages[i]) {
+            const iconX = -iconSize / 2;
+            const iconDrawY = iconY - iconSize / 2;
+            ctx.drawImage(iconImages[i], iconX, iconDrawY, iconSize, iconSize);
+          }
+
+          // Draw title with proper font (centered)
+          ctx.fillStyle = "white";
+          ctx.font = `bold ${titleSize}px "Space Grotesk", "Arial", sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(specs[i].title, 0, titleY);
+
+          // Draw subtitle with proper font
+          ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
+          ctx.globalAlpha = opacity * 0.9;
+
+          if (subtitleLines.length === 1) {
+            // Single line - draw directly at center
+            ctx.fillText(subtitleLines[0], 0, subtitleY);
+          } else {
+            // Multi-line: draw each line with proper spacing
+            const lineHeight = subtitleSize * 1.2;
+            // Calculate top of first line so entire block is centered at subtitleY
+            const totalTextHeight =
+              subtitleSize + (subtitleLines.length - 1) * lineHeight;
+            const firstLineTop = subtitleY - totalTextHeight / 2;
+            const firstLineY = firstLineTop + subtitleSize / 2;
+
+            subtitleLines.forEach((line, lineIndex) => {
+              if (lineIndex === 0) {
+                ctx.fillText(line, 0, firstLineY);
+              } else {
+                // Subsequent lines: firstLineTop + subtitleSize + spacing
+                const lineY =
+                  firstLineTop +
+                  subtitleSize +
+                  (lineIndex - 1) * lineHeight +
+                  subtitleSize / 2;
+                ctx.fillText(line, 0, lineY);
+              }
+            });
+          }
+
+          ctx.restore();
+        }
+      };
+
+      // Render all frames
+      (async () => {
+        for (let frame = 0; frame < totalFrames; frame++) {
+          await renderFrame(frame);
+          await new Promise((resolve) => setTimeout(resolve, frameDelay));
+        }
+
+        // Stop recording
+        mediaRecorder.stop();
+      })();
     });
   };
 
