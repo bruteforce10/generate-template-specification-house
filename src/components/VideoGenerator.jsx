@@ -432,8 +432,10 @@ const VideoGenerator = () => {
 
           // First, calculate subtitle height dynamically (before calculating positions)
           // This ensures spacing is correct for both single and multi-line subtitles
+          // IMPORTANT: maxSubtitleWidth must match PropertyVideo's maxWidth (itemWidth)
+          // PropertyVideo uses maxWidth: itemWidth (not scaled), so we use itemWidth too
           const subtitleText = specs[i].subtitle;
-          const maxSubtitleWidth = itemWidth * scale;
+          const maxSubtitleWidth = itemWidth; // Same as PropertyVideo, no scale applied
 
           ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
           const metrics = ctx.measureText(subtitleText);
@@ -442,25 +444,45 @@ const VideoGenerator = () => {
           let subtitleLines = [subtitleText];
 
           if (metrics.width > maxSubtitleWidth) {
-            // Multi-line: calculate actual height
+            // Multi-line: wrap text per kata (bukan per huruf)
+            // Split by space to get words, then wrap each word
             const words = subtitleText.split(" ");
             const lines = [];
             let currentLine = "";
 
             for (let n = 0; n < words.length; n++) {
-              const testLine =
-                currentLine + (currentLine ? " " : "") + words[n];
-              const testMetrics = ctx.measureText(testLine);
+              const word = words[n];
+              // Measure single word (without space) to check if it fits
+              const wordMetrics = ctx.measureText(word);
 
-              if (testMetrics.width > maxSubtitleWidth && currentLine) {
-                lines.push(currentLine);
-                currentLine = words[n];
+              // If single word is too long, still add it (better than breaking)
+              if (wordMetrics.width > maxSubtitleWidth) {
+                // Word is too long, but we'll still add it to avoid breaking
+                if (currentLine) {
+                  lines.push(currentLine.trim());
+                  currentLine = word;
+                } else {
+                  currentLine = word;
+                }
               } else {
-                currentLine = testLine;
+                // Try adding word with space
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const testMetrics = ctx.measureText(testLine);
+
+                if (testMetrics.width > maxSubtitleWidth && currentLine) {
+                  // Current line + word exceeds width, start new line
+                  lines.push(currentLine.trim());
+                  currentLine = word;
+                } else {
+                  // Can fit, add to current line
+                  currentLine = testLine;
+                }
               }
             }
-            if (currentLine) {
-              lines.push(currentLine);
+
+            // Add remaining line
+            if (currentLine.trim()) {
+              lines.push(currentLine.trim());
             }
 
             subtitleLines = lines;
