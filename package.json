@@ -12,7 +12,7 @@
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
-    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-slot": "^1.2.4",
     "@remotion/bundler": "^4.0.371",
     "@remotion/player": "4.0.371",
     "@remotion/renderer": "^4.0.371",

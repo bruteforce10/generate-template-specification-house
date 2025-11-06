@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import PropertyVideo from "./PropertyVideo";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
 
 const ICON_OPTIONS = [
   { value: "bed", label: "Bed", icon: Bed },
