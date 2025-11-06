@@ -9,11 +9,32 @@ import {
   MapPin,
   DollarSign,
   Calendar,
+  X,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import PropertyVideo from "./PropertyVideo";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "./ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 const ICON_OPTIONS = [
   { value: "bed", label: "Bed", icon: Bed },
@@ -26,26 +47,73 @@ const ICON_OPTIONS = [
   { value: "calendar", label: "Calendar", icon: Calendar },
 ];
 
-const VideoGenerator = () => {
-  const [specs, setSpecs] = useState([
-    { icon: "bed", title: "2+1", subtitle: "Kamar Tidur" },
-    { icon: "home", title: "45", subtitle: "M² Luas" },
-    { icon: "bath", title: "2+1", subtitle: "Kamar Mandi" },
-  ]);
+const specSchema = z.object({
+  icon: z.string(),
+  title: z.string(),
+  subtitle: z.string(),
+});
 
-  const [backgroundType, setBackgroundType] = useState("color");
-  const [backgroundColor, setBackgroundColor] = useState("#000000");
+const formSchema = z.object({
+  specs: z.array(specSchema).min(1).max(4),
+  animationMode: z.enum(["bersamaan", "berurutan"]),
+  animationType: z.enum([
+    "fade",
+    "slideUp",
+    "slideDown",
+    "slideLeft",
+    "slideRight",
+    "scale",
+    "bounce",
+    "rotate",
+  ]),
+  animationSettings: z.object({
+    fadeIn: z.number().min(0),
+    display: z.number().min(0),
+    fadeOut: z.number().min(0),
+  }),
+  spacing: z.number().min(0).max(200),
+  backgroundType: z.enum(["color", "video"]),
+  backgroundColor: z.string(),
+});
+
+const VideoGenerator = () => {
   const [backgroundVideo, setBackgroundVideo] = useState(null);
   const [backgroundVideoUrl, setBackgroundVideoUrl] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [spacing, setSpacing] = useState(40);
-  const [animationMode, setAnimationMode] = useState("bersamaan"); // 'bersamaan' or 'berurutan'
-  const [animationType, setAnimationType] = useState("fade"); // 'fade', 'slideUp', 'slideLeft', 'slideRight', 'scale', 'bounce', 'rotate'
-  const [animationSettings, setAnimationSettings] = useState({
-    fadeIn: 1,
-    display: 3,
-    fadeOut: 1,
+
+  const form = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      specs: [
+        { icon: "bed", title: "2+1", subtitle: "Kamar Tidur" },
+        { icon: "home", title: "45", subtitle: "M² Luas" },
+        { icon: "bath", title: "2+1", subtitle: "Kamar Mandi" },
+      ],
+      animationMode: "bersamaan",
+      animationType: "fade",
+      animationSettings: {
+        fadeIn: 1,
+        display: 3,
+        fadeOut: 1,
+      },
+      spacing: 40,
+      backgroundType: "color",
+      backgroundColor: "#000000",
+    },
   });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "specs",
+  });
+
+  const specs = form.watch("specs");
+  const animationMode = form.watch("animationMode");
+  const animationType = form.watch("animationType");
+  const animationSettings = form.watch("animationSettings");
+  const spacing = form.watch("spacing");
+  const backgroundType = form.watch("backgroundType");
+  const backgroundColor = form.watch("backgroundColor");
 
   const calculateTotalDuration = useCallback(() => {
     if (animationMode === "bersamaan") {
@@ -55,7 +123,6 @@ const VideoGenerator = () => {
         animationSettings.fadeOut
       );
     } else {
-      // berurutan: each spec appears one by one, then all stay visible, then all fade out together
       const totalFadeIn = animationSettings.fadeIn * specs.length;
       return (
         totalFadeIn + animationSettings.display + animationSettings.fadeOut
@@ -76,24 +143,7 @@ const VideoGenerator = () => {
       toast.error("Maksimal 4 spesifikasi");
       return;
     }
-    setSpecs([
-      ...specs,
-      {
-        icon: "home",
-        title: "",
-        subtitle: "",
-      },
-    ]);
-  };
-
-  const removeSpec = (index) => {
-    setSpecs(specs.filter((_, i) => i !== index));
-  };
-
-  const updateSpec = (index, field, value) => {
-    const newSpecs = [...specs];
-    newSpecs[index][field] = value;
-    setSpecs(newSpecs);
+    append({ icon: "home", title: "", subtitle: "" });
   };
 
   const handleVideoUpload = (e) => {
@@ -118,7 +168,6 @@ const VideoGenerator = () => {
         "Memulai export video... Ini mungkin memakan waktu beberapa menit."
       );
 
-      // Use browser-based export using canvas recording
       await exportVideoBrowser();
     } catch (error) {
       console.error("Export error:", error);
@@ -128,13 +177,11 @@ const VideoGenerator = () => {
   };
 
   const exportVideoBrowser = async () => {
-    // Create a canvas for rendering
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1920;
     const ctx = canvas.getContext("2d");
 
-    // Calculate sizing based on number of specs (same as PropertyVideo)
     const numSpecs = specs.length;
     let iconSize, titleSize, subtitleSize, itemGap;
     switch (numSpecs) {
@@ -177,7 +224,6 @@ const VideoGenerator = () => {
       scale = maxWidth / totalWidth;
     }
 
-    // Pre-render icons to images
     const renderIconToImage = async (spec, iconSize) => {
       const IconComponent = getIconComponent(spec.icon);
       const svgString = React.createElement(IconComponent, {
@@ -186,7 +232,6 @@ const VideoGenerator = () => {
         color: "white",
       });
 
-      // Create a temporary SVG element
       const tempDiv = document.createElement("div");
       tempDiv.style.position = "absolute";
       tempDiv.style.left = "-9999px";
@@ -194,17 +239,14 @@ const VideoGenerator = () => {
       tempDiv.style.height = `${iconSize}px`;
       document.body.appendChild(tempDiv);
 
-      // Render React component to DOM
       const { createRoot } = await import("react-dom/client");
       const root = createRoot(tempDiv);
       root.render(
         React.createElement("div", { style: { color: "white" } }, svgString)
       );
 
-      // Wait for render
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Convert to image
       const svgElement = tempDiv.querySelector("svg");
       if (!svgElement) {
         document.body.removeChild(tempDiv);
@@ -238,8 +280,7 @@ const VideoGenerator = () => {
       specs.map((spec) => renderIconToImage(spec, iconSize))
     );
 
-    // Create MediaRecorder for video export
-    const stream = canvas.captureStream(30); // 30 fps
+    const stream = canvas.captureStream(30);
     const mediaRecorder = new MediaRecorder(stream, {
       mimeType: "video/webm;codecs=vp9",
       videoBitsPerSecond: 5000000,
@@ -257,7 +298,6 @@ const VideoGenerator = () => {
         try {
           const webmBlob = new Blob(chunks, { type: "video/webm" });
 
-          // Convert WebM to MP4 using ffmpeg.wasm
           toast.info("Mengkonversi ke MP4...");
 
           const { createFFmpeg, fetchFile } = await import("@ffmpeg/ffmpeg");
@@ -291,7 +331,6 @@ const VideoGenerator = () => {
           const data = ffmpeg.FS("readFile", "output.mp4");
           const mp4Blob = new Blob([data.buffer], { type: "video/mp4" });
 
-          // Download the MP4 file
           const url = window.URL.createObjectURL(mp4Blob);
           const a = document.createElement("a");
           a.href = url;
@@ -306,7 +345,6 @@ const VideoGenerator = () => {
           resolve();
         } catch (error) {
           console.error("Conversion error:", error);
-          // Fallback: download as WebM
           const webmBlob = new Blob(chunks, { type: "video/webm" });
           const url = window.URL.createObjectURL(webmBlob);
           const a = document.createElement("a");
@@ -325,27 +363,21 @@ const VideoGenerator = () => {
         }
       };
 
-      // Start recording
       mediaRecorder.start();
 
-      // Render frames to canvas
       const totalFrames = durationInFrames;
       const fps = 30;
       const frameDelay = 1000 / fps;
 
-      // Render each frame
       const renderFrame = async (frame) => {
-        // Draw background
         if (backgroundType === "color") {
           ctx.fillStyle = backgroundColor;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         } else if (backgroundType === "video" && backgroundVideoUrl) {
-          // Draw video background (simplified - just draw color for now)
           ctx.fillStyle = "#000000";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 
-        // Calculate current time
         const currentTime = frame / fps;
         const { fadeIn, display, fadeOut } = animationSettings;
 
@@ -359,7 +391,6 @@ const VideoGenerator = () => {
           let offsetY = 0;
           let scaleAnim = 1;
 
-          // Calculate animation progress
           let progress = 0;
           if (animationMode === "bersamaan") {
             const totalDuration = fadeIn + display + fadeOut;
@@ -391,7 +422,6 @@ const VideoGenerator = () => {
             }
           }
 
-          // Apply animation type
           switch (animationType) {
             case "fade":
               opacity = progress;
@@ -432,34 +462,25 @@ const VideoGenerator = () => {
           ctx.translate(x, y);
           ctx.scale(scaleAnim, scaleAnim);
 
-          // First, calculate subtitle height dynamically (before calculating positions)
-          // This ensures spacing is correct for both single and multi-line subtitles
-          // IMPORTANT: maxSubtitleWidth must match PropertyVideo's maxWidth (itemWidth)
-          // PropertyVideo uses maxWidth: itemWidth (not scaled), so we use itemWidth too
           const subtitleText = specs[i].subtitle;
-          const maxSubtitleWidth = itemWidth; // Same as PropertyVideo, no scale applied
+          const maxSubtitleWidth = itemWidth;
 
           ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
           const metrics = ctx.measureText(subtitleText);
 
-          let subtitleHeight = subtitleSize; // Default for single line
+          let subtitleHeight = subtitleSize;
           let subtitleLines = [subtitleText];
 
           if (metrics.width > maxSubtitleWidth) {
-            // Multi-line: wrap text per kata (bukan per huruf)
-            // Split by space to get words, then wrap each word
             const words = subtitleText.split(" ");
             const lines = [];
             let currentLine = "";
 
             for (let n = 0; n < words.length; n++) {
               const word = words[n];
-              // Measure single word (without space) to check if it fits
               const wordMetrics = ctx.measureText(word);
 
-              // If single word is too long, still add it (better than breaking)
               if (wordMetrics.width > maxSubtitleWidth) {
-                // Word is too long, but we'll still add it to avoid breaking
                 if (currentLine) {
                   lines.push(currentLine.trim());
                   currentLine = word;
@@ -467,53 +488,33 @@ const VideoGenerator = () => {
                   currentLine = word;
                 }
               } else {
-                // Try adding word with space
                 const testLine = currentLine ? `${currentLine} ${word}` : word;
                 const testMetrics = ctx.measureText(testLine);
 
                 if (testMetrics.width > maxSubtitleWidth && currentLine) {
-                  // Current line + word exceeds width, start new line
                   lines.push(currentLine.trim());
                   currentLine = word;
                 } else {
-                  // Can fit, add to current line
                   currentLine = testLine;
                 }
               }
             }
 
-            // Add remaining line
             if (currentLine.trim()) {
               lines.push(currentLine.trim());
             }
 
             subtitleLines = lines;
-            // Multi-line height: first line (subtitleSize) + subsequent lines (lineHeight * 1.2)
             const lineHeight = subtitleSize * 1.2;
             subtitleHeight = subtitleSize + (lines.length - 1) * lineHeight;
           }
 
-          // Now calculate positions based on dynamic subtitle height
-          // PropertyVideo structure:
-          // - Container: flexDirection: column, alignItems: center, gap: itemGap
-          // - Icon div (height: iconSize)
-          // - Gap: itemGap
-          // - Title (height: titleSize, lineHeight: 1)
-          // - marginBottom: itemGap * 0.3
-          // - Subtitle (height: subtitleHeight - dynamic based on lines)
-          //
-          // Total height: iconSize + itemGap + titleSize + (itemGap * 0.3) + subtitleHeight
           const totalHeight =
             iconSize + itemGap + titleSize + itemGap * 0.3 + subtitleHeight;
           const topY = -totalHeight / 2;
 
-          // Icon: top element, center Y position
           const iconY = topY + iconSize / 2;
-
-          // Title: after icon + gap, center Y position
           const titleY = topY + iconSize + itemGap + titleSize / 2;
-
-          // Subtitle: after title + marginBottom, center Y position (using dynamic height)
           const subtitleY =
             topY +
             iconSize +
@@ -522,31 +523,25 @@ const VideoGenerator = () => {
             itemGap * 0.3 +
             subtitleHeight / 2;
 
-          // Draw icon (centered horizontally and vertically)
           if (iconImages[i]) {
             const iconX = -iconSize / 2;
             const iconDrawY = iconY - iconSize / 2;
             ctx.drawImage(iconImages[i], iconX, iconDrawY, iconSize, iconSize);
           }
 
-          // Draw title with proper font (centered)
           ctx.fillStyle = "white";
           ctx.font = `bold ${titleSize}px "Space Grotesk", "Arial", sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(specs[i].title, 0, titleY);
 
-          // Draw subtitle with proper font
           ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
           ctx.globalAlpha = opacity * 0.9;
 
           if (subtitleLines.length === 1) {
-            // Single line - draw directly at center
             ctx.fillText(subtitleLines[0], 0, subtitleY);
           } else {
-            // Multi-line: draw each line with proper spacing
             const lineHeight = subtitleSize * 1.2;
-            // Calculate top of first line so entire block is centered at subtitleY
             const totalTextHeight =
               subtitleSize + (subtitleLines.length - 1) * lineHeight;
             const firstLineTop = subtitleY - totalTextHeight / 2;
@@ -556,7 +551,6 @@ const VideoGenerator = () => {
               if (lineIndex === 0) {
                 ctx.fillText(line, 0, firstLineY);
               } else {
-                // Subsequent lines: firstLineTop + subtitleSize + spacing
                 const lineY =
                   firstLineTop +
                   subtitleSize +
@@ -571,14 +565,12 @@ const VideoGenerator = () => {
         }
       };
 
-      // Render all frames
       (async () => {
         for (let frame = 0; frame < totalFrames; frame++) {
           await renderFrame(frame);
           await new Promise((resolve) => setTimeout(resolve, frameDelay));
         }
 
-        // Stop recording
         mediaRecorder.stop();
       })();
     });
@@ -590,272 +582,371 @@ const VideoGenerator = () => {
   };
 
   return (
-    <div className="app-container">
-      <div className="header">
-        <h1>Property Spec Video Generator</h1>
-        <p>Buat video spesifikasi properti dengan mudah</p>
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="text-center mb-6 sm:mb-8 lg:mb-12">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 mb-2">
+          Property Spec Video Generator
+        </h1>
+        <p className="text-sm sm:text-base text-slate-600">
+          Buat video spesifikasi properti dengan mudah
+        </p>
       </div>
 
-      <div className="main-content">
-        <div className="card form-section">
-          <div>
-            <h2 style={{ marginBottom: "1rem", fontSize: "1.5rem" }}>
-              Spesifikasi Properti
-            </h2>
+      <div className="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-[1fr_0.9fr] xl:grid-cols-[1fr_1fr] gap-4 sm:gap-6 lg:gap-8">
+        <Form {...form}>
+          <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 shadow-lg space-y-4 sm:space-y-6">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 sm:mb-6 text-slate-900">
+                Spesifikasi Properti
+              </h2>
 
-            {specs.map((spec, index) => (
-              <div key={index} style={{ marginBottom: "1.5rem" }}>
-                <div
-                  className="spec-item"
-                  style={{ gridTemplateColumns: "100px 1fr 1fr auto" }}
+              {fields.map((field, index) => (
+                <div key={field.id} className="mb-4 sm:mb-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_1fr_auto] gap-3 sm:gap-4 items-end p-3 sm:p-4 bg-slate-50 rounded-lg border-2 border-slate-200">
+                    <FormField
+                      control={form.control}
+                      name={`specs.${index}.icon`}
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-1">
+                          <FormLabel className="text-sm">Ikon</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {ICON_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  <div className="flex items-center gap-2">
+                                    <opt.icon className="w-4 h-4" />
+                                    {opt.label}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name={`specs.${index}.title`}
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-1">
+                          <FormLabel className="text-sm">Title</FormLabel>
+                          <FormControl>
+                            <Input placeholder="2+1" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name={`specs.${index}.subtitle`}
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-1">
+                          <FormLabel className="text-sm">Subtitle</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Kamar Tidur" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => remove(index)}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50 sm:col-span-1 justify-self-end sm:justify-self-auto"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              {specs.length < 4 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addSpec}
+                  className="w-full"
                 >
-                  <div className="form-group">
-                    <label>Ikon</label>
-                    <select
-                      className="select"
-                      value={spec.icon}
-                      onChange={(e) =>
-                        updateSpec(index, "icon", e.target.value)
-                      }
-                    >
-                      {ICON_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Title</label>
-                    <input
-                      type="text"
-                      className="input-text"
-                      value={spec.title}
-                      onChange={(e) =>
-                        updateSpec(index, "title", e.target.value)
-                      }
-                      placeholder="2+1"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Subtitle</label>
-                    <input
-                      type="text"
-                      className="input-text"
-                      value={spec.subtitle}
-                      onChange={(e) =>
-                        updateSpec(index, "subtitle", e.target.value)
-                      }
-                      placeholder="Kamar Tidur"
-                    />
-                  </div>
-
-                  <button
-                    className="btn-icon"
-                    onClick={() => removeSpec(index)}
-                    title="Hapus"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {specs.length < 4 && (
-              <button
-                className="btn-secondary"
-                onClick={addSpec}
-                style={{ width: "100%" }}
-              >
-                + Tambah Spesifikasi
-              </button>
-            )}
-          </div>
-
-          <div style={{ borderTop: "2px solid #e2e8f0", paddingTop: "1.5rem" }}>
-            <h3 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>
-              Animasi
-            </h3>
-
-            <div className="form-group" style={{ marginBottom: "1rem" }}>
-              <label>Mode Animasi</label>
-              <select
-                className="select"
-                value={animationMode}
-                onChange={(e) => setAnimationMode(e.target.value)}
-              >
-                <option value="bersamaan">Bersamaan</option>
-                <option value="berurutan">Berurutan</option>
-              </select>
+                  + Tambah Spesifikasi
+                </Button>
+              )}
             </div>
 
-            <div className="form-group" style={{ marginBottom: "1rem" }}>
-              <label>Jenis Animasi</label>
-              <select
-                className="select"
-                value={animationType}
-                onChange={(e) => setAnimationType(e.target.value)}
-              >
-                <option value="fade">Fade In/Out</option>
-                <option value="slideUp">Slide Up</option>
-                <option value="slideDown">Slide Down</option>
-                <option value="slideLeft">Slide Left</option>
-                <option value="slideRight">Slide Right</option>
-                <option value="scale">Scale Up</option>
-                <option value="bounce">Bounce</option>
-                <option value="rotate">Rotate</option>
-              </select>
-            </div>
+            <div className="border-t-2 border-slate-200 pt-4 sm:pt-6">
+              <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-slate-900">
+                Animasi
+              </h3>
 
-            <div className="animation-controls">
-              <div className="form-group">
-                <label>Fade In (s)</label>
-                <input
-                  type="number"
-                  className="input-number"
-                  value={animationSettings.fadeIn}
-                  onChange={(e) =>
-                    setAnimationSettings({
-                      ...animationSettings,
-                      fadeIn: parseFloat(e.target.value) || 0,
-                    })
-                  }
-                  min="0"
-                  step="0.1"
+              <div className="space-y-3 sm:space-y-4">
+                <FormField
+                  control={form.control}
+                  name="animationMode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Mode Animasi</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="bersamaan">Bersamaan</SelectItem>
+                          <SelectItem value="berurutan">Berurutan</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
 
-              <div className="form-group">
-                <label>Display (s)</label>
-                <input
-                  type="number"
-                  className="input-number"
-                  value={animationSettings.display}
-                  onChange={(e) =>
-                    setAnimationSettings({
-                      ...animationSettings,
-                      display: parseFloat(e.target.value) || 0,
-                    })
-                  }
-                  min="0"
-                  step="0.1"
+                <FormField
+                  control={form.control}
+                  name="animationType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Jenis Animasi</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="fade">Fade In/Out</SelectItem>
+                          <SelectItem value="slideUp">Slide Up</SelectItem>
+                          <SelectItem value="slideDown">Slide Down</SelectItem>
+                          <SelectItem value="slideLeft">Slide Left</SelectItem>
+                          <SelectItem value="slideRight">
+                            Slide Right
+                          </SelectItem>
+                          <SelectItem value="scale">Scale Up</SelectItem>
+                          <SelectItem value="bounce">Bounce</SelectItem>
+                          <SelectItem value="rotate">Rotate</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
 
-              <div className="form-group">
-                <label>Fade Out (s)</label>
-                <input
-                  type="number"
-                  className="input-number"
-                  value={animationSettings.fadeOut}
-                  onChange={(e) =>
-                    setAnimationSettings({
-                      ...animationSettings,
-                      fadeOut: parseFloat(e.target.value) || 0,
-                    })
-                  }
-                  min="0"
-                  step="0.1"
-                />
-              </div>
-            </div>
-
-            <div className="form-group" style={{ marginTop: "1rem" }}>
-              <label>Jarak Antar Spesifikasi (px)</label>
-              <input
-                type="number"
-                className="input-number"
-                value={spacing}
-                onChange={(e) => setSpacing(parseInt(e.target.value) || 0)}
-                min="0"
-                max="200"
-                step="5"
-              />
-            </div>
-          </div>
-
-          <div style={{ borderTop: "2px solid #e2e8f0", paddingTop: "1.5rem" }}>
-            <h3 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>
-              Background
-            </h3>
-
-            <div className="form-group">
-              <label>Tipe Background</label>
-              <select
-                className="select"
-                value={backgroundType}
-                onChange={(e) => {
-                  setBackgroundType(e.target.value);
-                  if (e.target.value === "color") {
-                    setBackgroundVideoUrl(null);
-                  }
-                }}
-              >
-                <option value="color">Solid Color</option>
-                <option value="video">Video</option>
-              </select>
-            </div>
-
-            {backgroundType === "color" && (
-              <div className="form-group">
-                <label>Warna Background</label>
-                <div className="color-picker-wrapper">
-                  <input
-                    type="color"
-                    className="color-picker"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <FormField
+                    control={form.control}
+                    name="animationSettings.fadeIn"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Fade In (s)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(parseFloat(e.target.value) || 0)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                  <input
-                    type="text"
-                    className="input-text"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                    placeholder="#000000"
+
+                  <FormField
+                    control={form.control}
+                    name="animationSettings.display"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Display (s)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(parseFloat(e.target.value) || 0)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="animationSettings.fadeOut"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">Fade Out (s)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(parseFloat(e.target.value) || 0)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
                 </div>
-              </div>
-            )}
 
-            {backgroundType === "video" && (
-              <div className="form-group">
-                <label>Upload Video Background</label>
-                <div className="file-input-wrapper">
-                  <input
-                    type="file"
-                    id="video-upload"
-                    accept="video/*"
-                    onChange={handleVideoUpload}
+                <FormField
+                  control={form.control}
+                  name="spacing"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Jarak Antar Spesifikasi (px)
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="200"
+                          step="5"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="border-t-2 border-slate-200 pt-4 sm:pt-6">
+              <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-slate-900">
+                Background
+              </h3>
+
+              <div className="space-y-3 sm:space-y-4">
+                <FormField
+                  control={form.control}
+                  name="backgroundType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Tipe Background</FormLabel>
+                      <Select
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          if (value === "color") {
+                            setBackgroundVideoUrl(null);
+                          }
+                        }}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="color">Solid Color</SelectItem>
+                          <SelectItem value="video">Video</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {backgroundType === "color" && (
+                  <FormField
+                    control={form.control}
+                    name="backgroundColor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">
+                          Warna Background
+                        </FormLabel>
+                        <div className="flex gap-2 sm:gap-4 items-center">
+                          <input
+                            type="color"
+                            {...field}
+                            className="w-12 h-10 sm:w-16 border-2 border-slate-200 rounded-lg cursor-pointer flex-shrink-0"
+                          />
+                          <FormControl>
+                            <Input
+                              placeholder="#000000"
+                              {...field}
+                              className="flex-1"
+                            />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                  <label htmlFor="video-upload" className="file-input-label">
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    {backgroundVideo ? backgroundVideo.name : "Pilih video..."}
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+                )}
 
-        <div className="preview-section">
-          <div className="card">
-            <h3 style={{ marginBottom: "1rem", fontSize: "1.25rem" }}>
+                {backgroundType === "video" && (
+                  <FormItem>
+                    <FormLabel className="text-sm">
+                      Upload Video Background
+                    </FormLabel>
+                    <div className="relative">
+                      <input
+                        type="file"
+                        id="video-upload"
+                        accept="video/*"
+                        onChange={handleVideoUpload}
+                        className="absolute left-[-9999px]"
+                      />
+                      <label
+                        htmlFor="video-upload"
+                        className="flex items-center gap-2 px-4 py-3 bg-white border-2 border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors text-slate-700 font-medium"
+                      >
+                        <Upload className="w-5 h-5" />
+                        {backgroundVideo
+                          ? backgroundVideo.name
+                          : "Pilih video..."}
+                      </label>
+                    </div>
+                  </FormItem>
+                )}
+              </div>
+            </div>
+          </div>
+        </Form>
+
+        <div className="lg:sticky lg:top-8 h-fit">
+          <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 shadow-lg">
+            <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-slate-900">
               Preview
             </h3>
-            <div className="preview-container">
+            <div className="bg-slate-900 rounded-xl p-2 sm:p-4 aspect-[9/16] max-w-[280px] sm:max-w-[320px] lg:max-w-[400px] mx-auto lg:mx-0 flex items-center justify-center overflow-hidden">
               <Player
                 component={PropertyVideo}
                 inputProps={{
@@ -873,36 +964,25 @@ const VideoGenerator = () => {
                 fps={30}
                 compositionWidth={1080}
                 compositionHeight={1920}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                }}
+                className="w-full h-full"
                 controls
                 loop
               />
             </div>
 
-            <div className="export-controls">
-              <button
-                className="btn-primary"
+            <div className="flex gap-4 mt-4 sm:mt-6">
+              <Button
                 onClick={exportVideo}
                 disabled={isExporting}
-                style={{ flex: 1 }}
+                className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg text-sm sm:text-base"
                 data-testid="export-video-btn"
               >
                 {isExporting ? "Exporting..." : "Export Video"}
-              </button>
+              </Button>
             </div>
 
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "1rem",
-                background: "#f7fafc",
-                borderRadius: "8px",
-              }}
-            >
-              <p style={{ fontSize: "0.875rem", color: "#4a5568", margin: 0 }}>
+            <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-slate-50 rounded-lg">
+              <p className="text-xs sm:text-sm text-slate-600">
                 <strong>Durasi:</strong> {calculateTotalDuration().toFixed(1)}{" "}
                 detik
                 <br />

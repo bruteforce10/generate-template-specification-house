@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import VideoGenerator from "./components/VideoGenerator";
-import "./App.css";
 
 function App() {
   return (
