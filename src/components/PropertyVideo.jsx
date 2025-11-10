@@ -8,21 +8,23 @@ import {
 } from "remotion";
 
 const PropertyVideo = ({
-  specs,
-  backgroundType,
-  backgroundColor,
+  specs = [],
+  backgroundType = "color",
+  backgroundColor = "#000000",
   backgroundVideoUrl,
   getIconComponent,
   spacing = 40,
-  animationSettings,
+  animationSettings = { fadeIn: 1, display: 3, fadeOut: 1 },
   animationMode = "bersamaan",
   animationType = "fade",
+  titleFont = "Space Grotesk",
+  subtitleFont = "Inter",
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const currentTime = frame / fps;
 
-  const { fadeIn, display, fadeOut } = animationSettings;
+  const { fadeIn = 1, display = 3, fadeOut = 1 } = animationSettings || {};
 
   // Calculate sizing based on number of specs
   const numSpecs = specs.length;
@@ -275,10 +277,11 @@ const PropertyVideo = ({
             return (
               <div key={index} style={animStyle}>
                 <div style={{ color: "white", fontSize: iconSize }}>
-                  {React.createElement(getIconComponent(spec.icon), {
-                    size: iconSize,
-                    strokeWidth: 2,
-                  })}
+                  {getIconComponent &&
+                    React.createElement(getIconComponent(spec.icon), {
+                      size: iconSize,
+                      strokeWidth: 2,
+                    })}
                 </div>
 
                 <div
@@ -291,7 +294,7 @@ const PropertyVideo = ({
                     style={{
                       fontSize: titleSize,
                       fontWeight: "bold",
-                      fontFamily: "Space Grotesk, sans-serif",
+                      fontFamily: `${titleFont}, sans-serif`,
                       marginBottom: `${itemGap * 0.3}px`,
                       lineHeight: 1,
                     }}
@@ -302,7 +305,7 @@ const PropertyVideo = ({
                   <div
                     style={{
                       fontSize: subtitleSize,
-                      fontFamily: "Inter, sans-serif",
+                      fontFamily: `${subtitleFont}, sans-serif`,
                       opacity: 0.9,
                       lineHeight: 1.2,
                       wordBreak: "break-word",

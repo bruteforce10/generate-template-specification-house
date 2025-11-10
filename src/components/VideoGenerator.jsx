@@ -47,6 +47,30 @@ const ICON_OPTIONS = [
   { value: "calendar", label: "Calendar", icon: Calendar },
 ];
 
+const FONT_OPTIONS = [
+  { value: "Anton", label: "Anton" },
+  { value: "Montserrat", label: "Montserrat" },
+  { value: "Inter", label: "Inter" },
+  { value: "Roboto", label: "Roboto" },
+  { value: "Open Sans", label: "Open Sans" },
+  { value: "Poppins", label: "Poppins" },
+  { value: "Lato", label: "Lato" },
+  { value: "Oswald", label: "Oswald" },
+  { value: "Raleway", label: "Raleway" },
+  { value: "Ubuntu", label: "Ubuntu" },
+  { value: "Playfair Display", label: "Playfair Display" },
+  { value: "Merriweather", label: "Merriweather" },
+  { value: "Source Sans Pro", label: "Source Sans Pro" },
+  { value: "Nunito", label: "Nunito" },
+  { value: "Rubik", label: "Rubik" },
+  { value: "PT Sans", label: "PT Sans" },
+  { value: "Lora", label: "Lora" },
+  { value: "Noto Sans", label: "Noto Sans" },
+  { value: "Space Grotesk", label: "Space Grotesk" },
+  { value: "DM Sans", label: "DM Sans" },
+  { value: "Work Sans", label: "Work Sans" },
+];
+
 const specSchema = z.object({
   icon: z.string(),
   title: z.string(),
@@ -74,6 +98,8 @@ const formSchema = z.object({
   spacing: z.number().min(0).max(200),
   backgroundType: z.enum(["color", "video"]),
   backgroundColor: z.string(),
+  titleFont: z.string(),
+  subtitleFont: z.string(),
 });
 
 const VideoGenerator = () => {
@@ -99,6 +125,8 @@ const VideoGenerator = () => {
       spacing: 40,
       backgroundType: "color",
       backgroundColor: "#000000",
+      titleFont: "Space Grotesk",
+      subtitleFont: "Inter",
     },
   });
 
@@ -114,6 +142,8 @@ const VideoGenerator = () => {
   const spacing = form.watch("spacing");
   const backgroundType = form.watch("backgroundType");
   const backgroundColor = form.watch("backgroundColor");
+  const titleFont = form.watch("titleFont");
+  const subtitleFont = form.watch("subtitleFont");
 
   const calculateTotalDuration = useCallback(() => {
     if (animationMode === "bersamaan") {
@@ -177,6 +207,11 @@ const VideoGenerator = () => {
   };
 
   const exportVideoBrowser = async () => {
+    // Wait for fonts to load
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1920;
@@ -465,7 +500,7 @@ const VideoGenerator = () => {
           const subtitleText = specs[i].subtitle;
           const maxSubtitleWidth = itemWidth;
 
-          ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
+          ctx.font = `${subtitleSize}px "${subtitleFont}", "Arial", sans-serif`;
           const metrics = ctx.measureText(subtitleText);
 
           let subtitleHeight = subtitleSize;
@@ -530,12 +565,12 @@ const VideoGenerator = () => {
           }
 
           ctx.fillStyle = "white";
-          ctx.font = `bold ${titleSize}px "Space Grotesk", "Arial", sans-serif`;
+          ctx.font = `bold ${titleSize}px "${titleFont}", "Arial", sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(specs[i].title, 0, titleY);
 
-          ctx.font = `${subtitleSize}px "Inter", "Arial", sans-serif`;
+          ctx.font = `${subtitleSize}px "${subtitleFont}", "Arial", sans-serif`;
           ctx.globalAlpha = opacity * 0.9;
 
           if (subtitleLines.length === 1) {
@@ -938,6 +973,74 @@ const VideoGenerator = () => {
                 )}
               </div>
             </div>
+
+            <div className="border-t-2 border-slate-200 pt-4 sm:pt-6">
+              <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-slate-900">
+                Font
+              </h3>
+
+              <div className="space-y-3 sm:space-y-4">
+                <FormField
+                  control={form.control}
+                  name="titleFont"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Font Title</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {FONT_OPTIONS.map((font) => (
+                            <SelectItem key={font.value} value={font.value}>
+                              <span style={{ fontFamily: font.value }}>
+                                {font.label}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="subtitleFont"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Font Subtitle</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {FONT_OPTIONS.map((font) => (
+                            <SelectItem key={font.value} value={font.value}>
+                              <span style={{ fontFamily: font.value }}>
+                                {font.label}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
           </div>
         </Form>
 
@@ -946,28 +1049,59 @@ const VideoGenerator = () => {
             <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-slate-900">
               Preview
             </h3>
-            <div className="bg-slate-900 rounded-xl p-2 sm:p-4 aspect-[9/16] max-w-[280px] sm:max-w-[320px] lg:max-w-[400px] mx-auto lg:mx-0 flex items-center justify-center overflow-hidden">
-              <Player
-                component={PropertyVideo}
-                inputProps={{
-                  specs,
-                  backgroundType,
-                  backgroundColor,
-                  backgroundVideoUrl,
-                  getIconComponent,
-                  spacing,
-                  animationSettings,
-                  animationMode,
-                  animationType,
-                }}
-                durationInFrames={durationInFrames}
-                fps={30}
-                compositionWidth={1080}
-                compositionHeight={1920}
-                className="w-full h-full"
-                controls
-                loop
-              />
+            <div
+              className="bg-slate-900 rounded-xl mx-auto lg:mx-0 relative"
+              style={{
+                width: "100%",
+                maxWidth: "400px",
+                aspectRatio: "9/16",
+                minHeight: "300px",
+              }}
+            >
+              {specs && specs.length > 0 && animationSettings ? (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    position: "relative",
+                  }}
+                >
+                  <Player
+                    component={PropertyVideo}
+                    inputProps={{
+                      specs,
+                      backgroundType,
+                      backgroundColor,
+                      backgroundVideoUrl,
+                      getIconComponent,
+                      spacing,
+                      animationSettings,
+                      animationMode,
+                      animationType,
+                      titleFont,
+                      subtitleFont,
+                    }}
+                    durationInFrames={Math.max(durationInFrames, 30)}
+                    fps={30}
+                    compositionWidth={1080}
+                    compositionHeight={1920}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                    }}
+                    controls
+                    loop
+                    autoPlay
+                  />
+                </div>
+              ) : (
+                <div
+                  className="text-white text-center flex items-center justify-center"
+                  style={{ width: "100%", height: "100%", minHeight: "300px" }}
+                >
+                  <p>Loading preview...</p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-4 mt-4 sm:mt-6">
