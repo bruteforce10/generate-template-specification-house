@@ -68,6 +68,8 @@ const formSchema = z.object({
   fontFamily: z.string(),
   arrowMirrored: z.boolean(),
   textSpacing: z.number().min(0).max(100),
+  diagonalLength: z.number().min(0).max(2000),
+  horizontalLength: z.number().min(0).max(2000),
 });
 
 const CalloutLabelGenerator = () => {
@@ -97,6 +99,8 @@ const CalloutLabelGenerator = () => {
       fontFamily: "Arial",
       arrowMirrored: false,
       textSpacing: 8,
+      diagonalLength: 600,
+      horizontalLength: 400,
     },
   });
 
@@ -157,7 +161,7 @@ const CalloutLabelGenerator = () => {
 
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
-    canvas.height = 1920;
+    canvas.height = 1080;
     const ctx = canvas.getContext("2d");
 
     const stream = canvas.captureStream(30);
@@ -308,32 +312,53 @@ const CalloutLabelGenerator = () => {
         ctx.scale(scale, scale);
         ctx.translate(-canvas.width / 2, -canvas.height / 2 + translateY);
 
-        // Text box position (center area, moved up)
-        const textBoxWidth = 300;
-        const textBoxHeight = 120;
-        const textBoxX = canvas.width / 2 - textBoxWidth / 2;
-        const textBoxY = canvas.height / 2 - 200; // Moved up more
-
-        // Image dimensions (above text box)
-        const imageWidth = 400;
-        const imageHeight = 250;
-        const imageGap = 20; // Gap between image and text
-        const imageX = canvas.width / 2 - imageWidth / 2; // Centered above text
-        const imageY = textBoxY - imageHeight - imageGap;
-
         // Marker position (bottom left or right depending on mirror)
         const arrowMirrored = formValues.arrowMirrored || false;
         const markerX = arrowMirrored ? canvas.width - 60 : 60;
         const markerY = canvas.height - 60;
         const markerSize = formValues.markerSize || 12;
 
-        // Line path
+        // Line path dengan bentuk siku (L-shape): diagonal naik vertikal lalu belok 90 derajat horizontal
+        const diagonalLength = formValues.diagonalLength ?? 600;
         const lineStartX = markerX;
         const lineStartY = markerY;
-        const lineEndX = arrowMirrored ? textBoxX : textBoxX + textBoxWidth;
-        const lineEndY = textBoxY + textBoxHeight / 2;
-        const cornerX = arrowMirrored ? textBoxX + textBoxWidth : textBoxX;
-        const cornerY = lineEndY;
+
+        // Bentuk siku sederhana (L-shape):
+        // 1. Garis vertikal naik dari marker (X tetap, Y berkurang) sejauh diagonalLength
+        // 2. Belok 90 derajat horizontal (Y tetap, X menuju targetX) ke text box
+
+        // Corner adalah titik belok (siku)
+        // Corner X = markerX (garis vertikal, X tidak berubah)
+        const cornerX = markerX;
+
+        // Corner Y = markerY - diagonalLength (naik vertikal)
+        const cornerY = markerY - diagonalLength;
+
+        // End point: garis horizontal dengan panjang yang bisa dikustomisasi
+        const horizontalLength = formValues.horizontalLength ?? 400;
+        // End X = cornerX + horizontalLength (atau - jika arrowMirrored)
+        const lineEndX = arrowMirrored
+          ? cornerX - horizontalLength
+          : cornerX + horizontalLength;
+        const lineEndY = cornerY;
+
+        // Text box position: menempel di atas garis horizontal
+        // Text box diletakkan tepat di atas end point garis horizontal
+        const textBoxWidth = 300;
+        const textBoxHeight = 120;
+        // Text box X = lineEndX (centered pada end point garis horizontal)
+        const textBoxX = lineEndX - textBoxWidth / 2;
+        // Text box Y = cornerY - textBoxHeight (menempel di atas garis)
+        const textBoxY = cornerY - textBoxHeight;
+
+        // Image dimensions (above text box) - menempel dinamis mengikuti text box
+        const imageWidth = 400;
+        const imageHeight = 250;
+        const imageGap = 10; // Gap kecil antara image dan text
+        // Image X = centered pada text box (mengikuti end point garis horizontal)
+        const imageX = textBoxX + textBoxWidth / 2 - imageWidth / 2;
+        // Image Y = di atas text box dengan gap kecil
+        const imageY = textBoxY - imageHeight - imageGap;
 
         // Draw image with border
         if (imageUrl) {
@@ -376,12 +401,18 @@ const CalloutLabelGenerator = () => {
 
         // Draw text box
         const textSpacing = formValues.textSpacing || 8;
+        const topTextFontSize = 48;
+        const bottomTextFontSize = 42;
         const topTextY = textBoxY + 40;
-        const bottomTextY = topTextY + 48 + textSpacing + 20; // 48 is font size, 20 is half of bottom text height
+
+        // Calculate bottom text position based on spacing
+        const bottomTextBgHeight = 40;
+        const bottomTextBgY = topTextY + topTextFontSize / 2 + textSpacing;
+        const bottomTextY = bottomTextBgY + bottomTextBgHeight / 2;
 
         // Top text
         ctx.fillStyle = formValues.topTextColor || "#FF0000";
-        ctx.font = `bold 48px "${
+        ctx.font = `bold ${topTextFontSize}px "${
           formValues.fontFamily || "Arial"
         }", sans-serif`;
         ctx.textAlign = "center";
@@ -393,16 +424,16 @@ const CalloutLabelGenerator = () => {
         );
 
         // Bottom text background
-        const bottomTextBgY = topTextY + 48 / 2 + textSpacing; // Half of top text height + spacing
-        const bottomTextBgHeight = 40;
         ctx.fillStyle = formValues.calloutColor || "#FF0000";
         ctx.fillRect(textBoxX, bottomTextBgY, textBoxWidth, bottomTextBgHeight);
 
         // Bottom text
         ctx.fillStyle = formValues.bottomTextColor || "#FFFFFF";
-        ctx.font = `bold 42px "${
+        ctx.font = `bold ${bottomTextFontSize}px "${
           formValues.fontFamily || "Arial"
         }", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
         ctx.fillText(
           formValues.bottomText || "4 Menit",
           textBoxX + textBoxWidth / 2,
@@ -466,6 +497,31 @@ const CalloutLabelGenerator = () => {
                       <FormLabel className="text-sm">Bottom Text</FormLabel>
                       <FormControl>
                         <Input placeholder="4 Menit" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="textSpacing"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Jarak Antara Teks (px)
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value) || 0)
+                          }
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -731,6 +787,56 @@ const CalloutLabelGenerator = () => {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="diagonalLength"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Panjang Garis Diagonal (px)
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="2000"
+                          step="10"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="horizontalLength"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Panjang Garis Horizontal (px)
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="2000"
+                          step="10"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
             </div>
 
@@ -883,7 +989,7 @@ const CalloutLabelGenerator = () => {
               style={{
                 width: "100%",
                 maxWidth: "400px",
-                aspectRatio: "9/16",
+                aspectRatio: "1/1",
                 minHeight: "300px",
               }}
             >
@@ -913,11 +1019,14 @@ const CalloutLabelGenerator = () => {
                       animationType: formValues.animationType,
                       animationSettings: formValues.animationSettings,
                       fontFamily: formValues.fontFamily,
+                      textSpacing: formValues.textSpacing,
+                      diagonalLength: formValues.diagonalLength,
+                      horizontalLength: formValues.horizontalLength,
                     }}
                     durationInFrames={Math.max(durationInFrames, 30)}
                     fps={30}
                     compositionWidth={1080}
-                    compositionHeight={1920}
+                    compositionHeight={1080}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -959,7 +1068,7 @@ const CalloutLabelGenerator = () => {
                 <strong>Durasi:</strong> {calculateTotalDuration().toFixed(1)}{" "}
                 detik
                 <br />
-                <strong>Resolusi:</strong> 1080x1920 (9:16)
+                <strong>Resolusi:</strong> 1080x1080 (1:1)
               </p>
             </div>
           </div>
