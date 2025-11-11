@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Video, Tag } from "lucide-react";
+import { Video, Tag, User } from "lucide-react";
 
 const Homepage = () => {
   const generators = [
@@ -20,6 +20,15 @@ const Homepage = () => {
       path: "/callout-label",
       color: "from-blue-600 to-cyan-600",
       hoverColor: "from-blue-700 to-cyan-700",
+    },
+    {
+      id: "bumper-out",
+      title: "Bumper Out Video Generator",
+      description: "Buat video card kontak dengan profil, nama, dan nomor telepon. Perfect untuk ending video dengan informasi kontak agent.",
+      icon: User,
+      path: "/bumper-out",
+      color: "from-green-600 to-emerald-600",
+      hoverColor: "from-green-700 to-emerald-700",
     },
   ];
 
