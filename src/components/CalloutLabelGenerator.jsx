@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Player } from "@remotion/player";
-import { Upload, Download } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Upload, Download, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -164,6 +165,18 @@ const CalloutLabelGenerator = () => {
     canvas.height = 1080;
     const ctx = canvas.getContext("2d");
 
+    // Pre-load and cache image before rendering
+    let cachedImage = null;
+    if (imageUrl) {
+      cachedImage = new Image();
+      cachedImage.crossOrigin = "anonymous";
+      await new Promise((resolve, reject) => {
+        cachedImage.onload = resolve;
+        cachedImage.onerror = reject;
+        cachedImage.src = imageUrl;
+      });
+    }
+
     const stream = canvas.captureStream(30);
     const mediaRecorder = new MediaRecorder(stream, {
       mimeType: "video/webm;codecs=vp9",
@@ -203,6 +216,10 @@ const CalloutLabelGenerator = () => {
             "medium",
             "-crf",
             "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-aspect",
+            "1:1",
             "-c:a",
             "aac",
             "-b:a",
@@ -252,6 +269,31 @@ const CalloutLabelGenerator = () => {
       const totalFrames = durationInFrames;
       const fps = 30;
       const frameDelay = 1000 / fps;
+
+      // Calculate static positions (not affected by animation)
+      const arrowMirrored = formValues.arrowMirrored || false;
+      const markerX = arrowMirrored ? canvas.width - 60 : 60;
+      const markerY = canvas.height - 60;
+      const markerSize = formValues.markerSize || 12;
+      const diagonalLength = formValues.diagonalLength ?? 600;
+      const horizontalLength = formValues.horizontalLength ?? 400;
+      const cornerX = markerX;
+      const cornerY = markerY - diagonalLength;
+      const lineEndX = arrowMirrored
+        ? cornerX - horizontalLength
+        : cornerX + horizontalLength;
+      const lineEndY = cornerY;
+      const textBoxWidth = 300;
+      const textBoxHeight = 120;
+      const textBoxX = lineEndX - textBoxWidth / 2;
+      // Adjust textBoxY to be more aligned with arrow - move up slightly
+      // Text box should be positioned so it's more aligned with the horizontal line end
+      const textBoxY = cornerY - textBoxHeight + 30; // Move down 20px (moved up 10px from 30px)
+      const imageWidth = 400;
+      const imageHeight = 250;
+      const imageGap = 20; // Increased from 25px to make spacing more renggang between image and text
+      const imageX = textBoxX + textBoxWidth / 2 - imageWidth / 2;
+      const imageY = textBoxY - imageHeight - imageGap;
 
       const renderFrame = async (frame) => {
         // Clear canvas
@@ -306,79 +348,15 @@ const CalloutLabelGenerator = () => {
             break;
         }
 
+        // Apply transformations for animated content (arrow, image, and text)
+        // This ensures arrow and text box stay connected during scale animations
         ctx.save();
         ctx.globalAlpha = opacity;
         ctx.translate(canvas.width / 2, canvas.height / 2);
         ctx.scale(scale, scale);
         ctx.translate(-canvas.width / 2, -canvas.height / 2 + translateY);
 
-        // Marker position (bottom left or right depending on mirror)
-        const arrowMirrored = formValues.arrowMirrored || false;
-        const markerX = arrowMirrored ? canvas.width - 60 : 60;
-        const markerY = canvas.height - 60;
-        const markerSize = formValues.markerSize || 12;
-
-        // Line path dengan bentuk siku (L-shape): diagonal naik vertikal lalu belok 90 derajat horizontal
-        const diagonalLength = formValues.diagonalLength ?? 600;
-        const lineStartX = markerX;
-        const lineStartY = markerY;
-
-        // Bentuk siku sederhana (L-shape):
-        // 1. Garis vertikal naik dari marker (X tetap, Y berkurang) sejauh diagonalLength
-        // 2. Belok 90 derajat horizontal (Y tetap, X menuju targetX) ke text box
-
-        // Corner adalah titik belok (siku)
-        // Corner X = markerX (garis vertikal, X tidak berubah)
-        const cornerX = markerX;
-
-        // Corner Y = markerY - diagonalLength (naik vertikal)
-        const cornerY = markerY - diagonalLength;
-
-        // End point: garis horizontal dengan panjang yang bisa dikustomisasi
-        const horizontalLength = formValues.horizontalLength ?? 400;
-        // End X = cornerX + horizontalLength (atau - jika arrowMirrored)
-        const lineEndX = arrowMirrored
-          ? cornerX - horizontalLength
-          : cornerX + horizontalLength;
-        const lineEndY = cornerY;
-
-        // Text box position: menempel di atas garis horizontal
-        // Text box diletakkan tepat di atas end point garis horizontal
-        const textBoxWidth = 300;
-        const textBoxHeight = 120;
-        // Text box X = lineEndX (centered pada end point garis horizontal)
-        const textBoxX = lineEndX - textBoxWidth / 2;
-        // Text box Y = cornerY - textBoxHeight (menempel di atas garis)
-        const textBoxY = cornerY - textBoxHeight;
-
-        // Image dimensions (above text box) - menempel dinamis mengikuti text box
-        const imageWidth = 400;
-        const imageHeight = 250;
-        const imageGap = 10; // Gap kecil antara image dan text
-        // Image X = centered pada text box (mengikuti end point garis horizontal)
-        const imageX = textBoxX + textBoxWidth / 2 - imageWidth / 2;
-        // Image Y = di atas text box dengan gap kecil
-        const imageY = textBoxY - imageHeight - imageGap;
-
-        // Draw image with border
-        if (imageUrl) {
-          const img = new Image();
-          await new Promise((resolve, reject) => {
-            img.onload = () => {
-              // Draw border
-              ctx.strokeStyle = formValues.borderColor || "#FF0000";
-              ctx.lineWidth = (formValues.borderThickness || 4) * 2;
-              ctx.strokeRect(imageX, imageY, imageWidth, imageHeight);
-
-              // Draw image
-              ctx.drawImage(img, imageX, imageY, imageWidth, imageHeight);
-              resolve();
-            };
-            img.onerror = reject;
-            img.src = imageUrl;
-          });
-        }
-
+        // Draw arrow and marker INSIDE transform so they scale with text box
         // Draw marker
         ctx.fillStyle = formValues.calloutColor || "#FF0000";
         ctx.fillRect(
@@ -394,21 +372,74 @@ const CalloutLabelGenerator = () => {
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.beginPath();
-        ctx.moveTo(lineStartX, lineStartY);
+        ctx.moveTo(markerX, markerY);
         ctx.lineTo(cornerX, cornerY);
         ctx.lineTo(lineEndX, lineEndY);
         ctx.stroke();
 
-        // Draw text box
+        // Draw image with border (inside transform)
+        if (cachedImage) {
+          // Calculate aspect ratio to maintain image proportions (cover behavior)
+          const imageAspectRatio = cachedImage.width / cachedImage.height;
+          const targetAspectRatio = imageWidth / imageHeight;
+
+          let drawWidth = imageWidth;
+          let drawHeight = imageHeight;
+          let drawX = imageX;
+          let drawY = imageY;
+
+          if (imageAspectRatio > targetAspectRatio) {
+            // Image is wider, fit to height
+            drawHeight = imageHeight;
+            drawWidth = imageHeight * imageAspectRatio;
+            drawX = imageX + (imageWidth - drawWidth) / 2;
+          } else {
+            // Image is taller, fit to width
+            drawWidth = imageWidth;
+            drawHeight = imageWidth / imageAspectRatio;
+            drawY = imageY + (imageHeight - drawHeight) / 2;
+          }
+
+          // Draw border
+          ctx.strokeStyle = formValues.borderColor || "#FF0000";
+          ctx.lineWidth = (formValues.borderThickness || 4) * 2;
+          ctx.strokeRect(imageX, imageY, imageWidth, imageHeight);
+
+          // Draw image with cover behavior (centered and cropped)
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(imageX, imageY, imageWidth, imageHeight);
+          ctx.clip();
+          ctx.drawImage(cachedImage, drawX, drawY, drawWidth, drawHeight);
+          ctx.restore();
+        }
+
+        // Draw text box INSIDE transform so it follows all animations including scale
+        // Position is calculated to stay connected to arrow end point (lineEndX, lineEndY)
+        // Text box X is centered on lineEndX, Y is above lineEndY
         const textSpacing = formValues.textSpacing || 8;
         const topTextFontSize = 48;
         const bottomTextFontSize = 42;
-        const topTextY = textBoxY + 40;
+        const bottomTextPadding = 12; // padding: 12px 0 from preview
 
-        // Calculate bottom text position based on spacing
-        const bottomTextBgHeight = 40;
-        const bottomTextBgY = topTextY + topTextFontSize / 2 + textSpacing;
-        const bottomTextY = bottomTextBgY + bottomTextBgHeight / 2;
+        // Calculate total content height (matches preview flexbox behavior)
+        const bottomTextBgHeight = bottomTextFontSize + bottomTextPadding * 2;
+        const totalContentHeight =
+          topTextFontSize + textSpacing + bottomTextBgHeight;
+
+        // Preview centers content vertically using justifyContent: center
+        const actualContentHeight = totalContentHeight;
+        const verticalOffset = (textBoxHeight - actualContentHeight) / 2;
+
+        // Top text position - matching preview flexbox center alignment
+        const topTextY = textBoxY + verticalOffset + topTextFontSize / 2;
+
+        // Bottom text background position
+        const bottomTextBgY =
+          textBoxY + verticalOffset + topTextFontSize + textSpacing;
+        // Bottom text is centered in its background (which has padding)
+        const bottomTextY =
+          bottomTextBgY + bottomTextPadding + bottomTextFontSize / 2;
 
         // Top text
         ctx.fillStyle = formValues.topTextColor || "#FF0000";
@@ -456,6 +487,15 @@ const CalloutLabelGenerator = () => {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-[1400px] mx-auto">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-sm sm:text-base">Kembali ke Homepage</span>
+        </Link>
+      </div>
       <div className="text-center mb-6 sm:mb-8 lg:mb-12">
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 mb-2">
           Callout Label Video Generator

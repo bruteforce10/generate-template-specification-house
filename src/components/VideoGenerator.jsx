@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Player } from "@remotion/player";
+import { Link } from "react-router-dom";
 import {
   Bed,
   Home,
@@ -12,6 +13,7 @@ import {
   X,
   Upload,
   Trash2,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -618,6 +620,15 @@ const VideoGenerator = () => {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="max-w-[1400px] mx-auto">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-sm sm:text-base">Kembali ke Homepage</span>
+        </Link>
+      </div>
       <div className="text-center mb-6 sm:mb-8 lg:mb-12">
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 mb-2">
           Property Spec Video Generator
