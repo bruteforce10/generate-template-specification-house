@@ -57,6 +57,7 @@ const formSchema = z.object({
   backgroundColor: z.string(),
   cardBackgroundColor: z.string(),
   cardWidth: z.number().min(400).max(1000),
+  cardHeight: z.number().min(80).max(400),
   cardBorderRadius: z.number().min(0).max(100),
   cardPadding: z.number().min(0).max(100),
   cardGap: z.number().min(0).max(100),
@@ -94,6 +95,7 @@ const BumperOutGenerator = () => {
       backgroundColor: "#2D2D2D",
       cardBackgroundColor: "#FFFFFF",
       cardWidth: 800,
+      cardHeight: 120,
       cardBorderRadius: 20,
       cardPadding: 24,
       cardGap: 20,
@@ -308,7 +310,7 @@ const BumperOutGenerator = () => {
       const canvasWidth = 1080;
       const canvasHeight = 1080;
       const cardWidth = formValues.cardWidth || 800;
-      const cardHeight = 120;
+      const cardHeight = formValues.cardHeight || 120;
       const cardX = (canvasWidth - cardWidth) / 2;
       const cardY = (canvasHeight - cardHeight) / 2;
       const cardPadding = formValues.cardPadding || 24;
@@ -821,6 +823,29 @@ const BumperOutGenerator = () => {
 
                 <FormField
                   control={form.control}
+                  name="cardHeight"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Tinggi Card (px)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="80"
+                          max="400"
+                          step="10"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value) || 120)
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="profileImageSize"
                   render={({ field }) => (
                     <FormItem>
@@ -1208,6 +1233,7 @@ const BumperOutGenerator = () => {
                       backgroundColor: formValues.backgroundColor,
                       cardBackgroundColor: formValues.cardBackgroundColor,
                       cardWidth: formValues.cardWidth,
+                      cardHeight: formValues.cardHeight,
                       cardBorderRadius: formValues.cardBorderRadius,
                       cardPadding: formValues.cardPadding,
                       cardGap: formValues.cardGap,

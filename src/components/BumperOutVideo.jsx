@@ -16,6 +16,7 @@ const BumperOutVideo = ({
   backgroundColor = "#2D2D2D",
   cardBackgroundColor = "#FFFFFF",
   cardWidth = 800,
+  cardHeight = 120,
   cardBorderRadius = 20,
   cardPadding = 24,
   cardGap = 20,
@@ -97,7 +98,6 @@ const BumperOutVideo = ({
   const canvasHeight = 1080;
 
   // Card dimensions and position (centered)
-  const cardHeight = 120;
   const cardX = (canvasWidth - cardWidth) / 2;
   const cardY = (canvasHeight - cardHeight) / 2;
 
